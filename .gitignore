@@ -7,6 +7,7 @@
 # Reference: https://intellij-support.jetbrains.com/hc/en-us/articles/206544839
 
 # User-specific stuff
+.idea/
 .idea/**/workspace.xml
 .idea/**/tasks.xml
 .idea/**/usage.statistics.xml
@@ -134,5 +135,9 @@ Temporary Items
 ### VisualStudioCode Patch ###
 # Ignore all local history of files
 .history
+
+# Don't commit seeders
+logfiles/*
+compiled_domains.txt
 
 # End of https://www.gitignore.io/api/osx,linux,intellij,visualstudiocode
