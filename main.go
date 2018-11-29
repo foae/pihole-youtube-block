@@ -2,13 +2,21 @@ package main
 
 import (
 	"bufio"
+	"compress/gzip"
 	"encoding/json"
 	"fmt"
+	"io"
 	"io/ioutil"
 	"log"
 	"os"
+	"regexp"
 	"strings"
+	"sync"
+	"time"
 )
+
+var rgx = regexp.MustCompile(`(?m)r([0-9])(.*?)\.googlevideo\.com`)
+var lock = sync.Mutex{}
 
 // Config describes the configurable options for this program.
 type Config struct {
@@ -17,7 +25,28 @@ type Config struct {
 	OutputFileName    string `json:"COMPILED_FILE_NAME"`
 }
 
+type DomainMap struct {
+	m map[string]int
+}
+
+func (dm DomainMap) Insert(s string) {
+	lock.Lock()
+	dm.m[s]++
+	lock.Unlock()
+}
+
+func (dm DomainMap) Domains() map[string]int {
+	return dm.m
+}
+
+func NewDomainMap() *DomainMap {
+	return &DomainMap{
+		m: make(map[string]int, 0),
+	}
+}
+
 func main() {
+	ts := time.Now()
 	cfg, err := NewConfig()
 	if err != nil {
 		log.Fatalf("unable to start: %v", err)
@@ -41,40 +70,77 @@ func main() {
 	}
 
 	// Keep track of all gathered domains.
-	//compiledMap := make(map[string]int, 0)
+	compiledMap := NewDomainMap()
 
 	// For each file of interest, read it line-by-line.
 	for _, fileName := range filesOfInterest {
-		file := cfg.LogsDirectory + fileName
-		f, err := os.Open(file)
+		f := cfg.LogsDirectory + fileName
+		go processFile(f, compiledMap)
+	}
+
+	time.Sleep(time.Second * 2)
+
+	fmt.Printf("Unique extracted domains: %v in %v\n", len(compiledMap.Domains()), time.Since(ts))
+}
+
+func processFile(f string, registry *DomainMap) error {
+	ts := time.Now()
+	openFile, err := os.Open(f)
+	if err != nil {
+		return fmt.Errorf("processFile: skipped unreadable file (%v): %v", f, err)
+	}
+	defer openFile.Close()
+
+	var r *bufio.Reader
+	if strings.HasSuffix(f, ".gz") {
+		rr, err := gzip.NewReader(openFile)
 		if err != nil {
+			return err
+		}
+		defer rr.Close()
+		r = bufio.NewReader(rr)
+	} else {
+		r = bufio.NewReader(openFile)
+	}
+
+	var lineNumber int
+
+ForEachLine:
+	for {
+		line, lineTooLong, err := r.ReadLine()
+		switch {
+		case err == io.EOF:
+			log.Printf("Finished reading file (%v) after (%v) lines", f, lineNumber)
+			break ForEachLine
+		case err != nil:
 			log.Printf("Skipped unreadable file (%v): %v", f, err)
+			continue
+		case lineTooLong:
+			log.Printf("Skipped line (%v) in file (%v). Line is too long.", lineNumber, f)
 			continue
 		}
 
-		r := bufio.NewReader(f)
-		var lineNumber int
-		for {
-			line, lineTooLong, err := r.ReadLine()
-			if err != nil {
-				log.Printf("Skipped unreadable file (%v): %v", f, err)
-				continue
-			}
+		// Non-regex version, 2x faster
+		/*
+		if bytes.Contains(line, []byte(".googlevideo.com")) {
+			sLine := bytes.Split(line, []byte(" "))
+			// TODO: progressive checking for prefix `.googlevideo.com` from last index in `sLine`
+			s := fmt.Sprintf("%s", sLine[len(sLine)-3:len(sLine)-2])
+			registry.Insert(s)
+		}
+		*/
 
-			if lineTooLong {
-				log.Printf("Skipped line (%v) in file (%v). Line is too long.", lineNumber, file)
-				continue
-			}
-
-			// With `line`, read if there's a pattern
-			// rXXX.googlevideo.com
-
-			lineNumber++
+		for _, m := range rgx.FindAll(line, -1) {
+			s := fmt.Sprintf("%s", m)
+			registry.Insert(s)
 		}
 
+		lineNumber++
 	}
 
-	// If file has .gz extension, use a different bufio to read with
+	log.Printf("Finished processing file (%v) in (%v).", f, time.Since(ts))
+
+	return nil
 }
 
 func NewConfig() (*Config, error) {
@@ -88,10 +154,6 @@ func NewConfig() (*Config, error) {
 	if err := json.NewDecoder(f).Decode(&cfg); err != nil {
 		return nil, fmt.Errorf("config: could not decode file: %v", err)
 	}
-
-	fmt.Println("-----------")
-	fmt.Printf("%#v\n", cfg)
-	fmt.Println("-----------")
 
 	return &cfg, nil
 }
