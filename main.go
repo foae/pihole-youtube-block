@@ -109,8 +109,20 @@ AwaitInput:
 		case rn == 'Y', rn == 'y':
 			log.Println("Yes, OK.")
 
-			cmd := exec.Command("pihole", "-b "+compiledMap.DomainsToString())
-			if _, err := cmd.CombinedOutput(); err != nil {
+			var cmd *exec.Cmd
+			cmd = exec.Command("pihole", "-b "+compiledMap.DomainsToString())
+			if err := cmd.Start(); err != nil {
+				log.Fatalf("could not send command to pihole: %v", err)
+			}
+			if err := cmd.Wait(); err != nil {
+				log.Fatalf("could not send command to pihole: %v", err)
+			}
+
+			cmd = exec.Command("pihole", "restartdns")
+			if err := cmd.Start(); err != nil {
+				log.Fatalf("could not send command to pihole: %v", err)
+			}
+			if err := cmd.Wait(); err != nil {
 				log.Fatalf("could not send command to pihole: %v", err)
 			}
 
