@@ -22,7 +22,7 @@ $ go run main.go
 ###### For ARM (Raspberry Pi and alternatives)
 ```bash
 $ cd bin
-$ ./ytblock-arm
+$ ./ytblock-rpi
 ```
 
 ###### For all others
@@ -38,6 +38,24 @@ File `config.json`
 * `"PIHOLE_LOGS_DIR": "/var/log/",` – path to your pihole logs
 * `"COMPILED_FILE_NAME": "./compiled_domains.txt",` – name of the file used to collect all domains from logs
 * `"LOG_FILE_NAME_PREFIX": "pihole.log"` – if your pihole log files have a different name, you can change this
+
+##### Example output
+```bash
+blana@raspberrypi:~/pihole-youtube-block/bin $ ./ytblock-rpi 
+>>> Waiting for all jobs to finish...
+2018/11/30 19:19:14 Finished processing file (/var/log/pihole.log) in (1.964928163s).
+2018/11/30 19:19:16 Finished processing file (/var/log/pihole.log.1) in (3.518280066s).
+2018/11/30 19:19:17 Finished processing file (/var/log/pihole.log.4.gz) in (4.2751422s).
+2018/11/30 19:19:17 Finished processing file (/var/log/pihole.log.3.gz) in (5.027518374s).
+2018/11/30 19:19:18 Finished processing file (/var/log/pihole.log.5.gz) in (5.169115089s).
+2018/11/30 19:19:18 Finished processing file (/var/log/pihole.log.2.gz) in (5.431282712s).
+>>> Done: (125) unique extracted domains written to (./compiled_domains.txt) in (5.48431123s)
+-----------
+Would you like to stick those (125) collected domains into *your* pihole? (y/n)
+-----------
+n
+2018/11/30 19:19:20 No is a no. Bye.
+```
 
 ##### License
 MIT License
