@@ -74,6 +74,12 @@ func main() {
 	fmt.Println(">>> Waiting for all jobs to finish...")
 	wg.Wait()
 
+	fmt.Printf(">>> Done: (%v) unique extracted domains written to (%v) in (%v)\n",
+		len(compiledMap.Domains()),
+		cfg.OutputFileName,
+		time.Since(ts),
+	)
+
 	// Write to file gathered domains.
 	// TODO: maybe give the option to append if file exists and not overwrite?
 	f, err := os.Create("./" + cfg.OutputFileName)
@@ -117,11 +123,6 @@ AwaitInput:
 		}
 	}
 
-	fmt.Printf(">>> Done: (%v) unique extracted domains written to (%v) in (%v)\n",
-		len(compiledMap.Domains()),
-		cfg.OutputFileName,
-		time.Since(ts),
-	)
 }
 
 // Insert takes care of adding domains the the domain map.
@@ -200,7 +201,6 @@ ForEachLine:
 		line, lineTooLong, err := r.ReadLine()
 		switch {
 		case err == io.EOF:
-			log.Printf("Finished reading file (%v) after (%v) lines", f, lineNumber)
 			break ForEachLine
 		case err != nil:
 			log.Printf("Skipped unreadable file (%v): %v", f, err)
