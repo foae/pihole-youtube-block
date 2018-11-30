@@ -74,8 +74,9 @@ func main() {
 	fmt.Println(">>> Waiting for all jobs to finish...")
 	wg.Wait()
 
+	totalCollectedDomains := len(compiledMap.Domains())
 	fmt.Printf(">>> Done: (%v) unique extracted domains written to (%v) in (%v)\n",
-		len(compiledMap.Domains()),
+		totalCollectedDomains,
 		cfg.OutputFileName,
 		time.Since(ts),
 	)
@@ -96,7 +97,7 @@ func main() {
 	r := bufio.NewReader(os.Stdin)
 	fmt.Println("-----------")
 	fmt.Printf("Would you like to stick those (%v) collected domains into *your* pihole? (y/n)\n",
-		len(compiledMap.Domains()),
+		totalCollectedDomains,
 	)
 	fmt.Println("-----------")
 
@@ -107,23 +108,25 @@ AwaitInput:
 		case err != nil:
 			log.Fatalf("could not read input: %v", err)
 		case rn == 'Y', rn == 'y':
-			log.Println("Yes, OK.")
+			log.Println("Yes. Ok, please wait.")
 
+			log.Printf("Adding (%v) domains to the blacklist...", totalCollectedDomains)
 			var cmd *exec.Cmd
 			cmd = exec.Command("pihole", "-b "+compiledMap.DomainsToString())
 			if err := cmd.Start(); err != nil {
-				log.Fatalf("could not send command to pihole: %v", err)
+				log.Fatalf("could not send `blacklist domains` command to pihole: %v", err)
 			}
 			if err := cmd.Wait(); err != nil {
-				log.Fatalf("could not send command to pihole: %v", err)
+				log.Fatalf("could not send `blacklist domains` command to pihole: %v", err)
 			}
 
+			log.Println("Restarting pihole...")
 			cmd = exec.Command("pihole", "restartdns")
 			if err := cmd.Start(); err != nil {
-				log.Fatalf("could not send command to pihole: %v", err)
+				log.Fatalf("could not send `restartdns` command to pihole: %v", err)
 			}
 			if err := cmd.Wait(); err != nil {
-				log.Fatalf("could not send command to pihole: %v", err)
+				log.Fatalf("could not send `restartdns` command to pihole: %v", err)
 			}
 
 			break AwaitInput
