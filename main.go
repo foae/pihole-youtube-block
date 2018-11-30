@@ -110,7 +110,7 @@ func main() {
 			log.Printf("Adding (%v) domains to the blacklist...", totalCollectedDomains)
 
 			var cmd *exec.Cmd
-			cmd = exec.Command("pihole", "-b "+compiledMap.DomainsToString())
+			cmd = exec.Command("bash", "-c", "pihole -b "+compiledMap.DomainsToString())
 			out, err := cmd.CombinedOutput()
 			if err != nil {
 				log.Fatalf("could not send `blacklist domains` command to pihole: %v", err)
