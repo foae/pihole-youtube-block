@@ -17,7 +17,7 @@ import (
 )
 
 var (
-	rgx  = regexp.MustCompile(`(?m)r([0-9])(.*?)\.googlevideo\.com`)
+	rgx  = regexp.MustCompile(`(?m)r([0-9])---sn-(.*?)\.googlevideo\.com`)
 	lock = sync.Mutex{}
 )
 
