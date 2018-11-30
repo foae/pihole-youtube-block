@@ -62,12 +62,11 @@ func main() {
 	// Keep track of all gathered domains.
 	compiledMap := NewDomainMap()
 	var wg sync.WaitGroup
+	wg.Add(len(filesOfInterest))
 
 	// For each file of interest, read it line-by-line.
 	for _, fileName := range filesOfInterest {
 		f := cfg.LogsDirectory + fileName
-
-		wg.Add(1)
 		go processFile(f, compiledMap, &wg)
 	}
 
@@ -101,38 +100,38 @@ func main() {
 	)
 	fmt.Println("-----------")
 
-AwaitInput:
 	for {
 		rn, _, err := r.ReadRune()
 		switch {
 		case err != nil:
 			log.Fatalf("could not read input: %v", err)
 		case rn == 'Y', rn == 'y':
-			log.Println("Yes. Ok, please wait.")
-
+			log.Println("> Yes. Please wait.")
 			log.Printf("Adding (%v) domains to the blacklist...", totalCollectedDomains)
+
 			var cmd *exec.Cmd
 			cmd = exec.Command("pihole", "-b "+compiledMap.DomainsToString())
-			if err := cmd.Start(); err != nil {
-				log.Fatalf("could not send `blacklist domains` command to pihole: %v", err)
-			}
-			if err := cmd.Wait(); err != nil {
+			out, err := cmd.CombinedOutput()
+			if err != nil {
 				log.Fatalf("could not send `blacklist domains` command to pihole: %v", err)
 			}
 
+			log.Printf("Blacklist domains at pihole command output: %s", out)
 			log.Println("Restarting pihole...")
+
 			cmd = exec.Command("pihole", "restartdns")
-			if err := cmd.Start(); err != nil {
-				log.Fatalf("could not send `restartdns` command to pihole: %v", err)
-			}
-			if err := cmd.Wait(); err != nil {
+			out, err = cmd.CombinedOutput()
+			if err != nil {
 				log.Fatalf("could not send `restartdns` command to pihole: %v", err)
 			}
 
-			break AwaitInput
+			log.Printf("Restart pihole command output: %s", out)
+			log.Println("Job finished.")
+
+			return
 		case rn == 'N', rn == 'n':
 			log.Println("No is a no. Bye.")
-			break AwaitInput
+			return
 		default:
 			log.Printf("Your key (%v) is not supported. Use: Y, y, N, n", rn)
 		}
@@ -186,11 +185,9 @@ func NewConfig() (*Config, error) {
 }
 
 func processFile(f string, registry *DomainMap, wg *sync.WaitGroup) error {
-	defer func() {
-		wg.Done()
-	}()
-
+	defer wg.Done()
 	ts := time.Now()
+
 	openFile, err := os.Open(f)
 	if err != nil {
 		return fmt.Errorf("processFile: skipped unreadable file (%v): %v", f, err)
