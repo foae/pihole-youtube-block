@@ -9,14 +9,17 @@ import (
 	"io/ioutil"
 	"log"
 	"os"
+	"os/exec"
 	"regexp"
 	"strings"
 	"sync"
 	"time"
 )
 
-var rgx = regexp.MustCompile(`(?m)r([0-9])(.*?)\.googlevideo\.com`)
-var lock = sync.Mutex{}
+var (
+	rgx  = regexp.MustCompile(`(?m)r([0-9])(.*?)\.googlevideo\.com`)
+	lock = sync.Mutex{}
+)
 
 // Config describes the configurable options for this program.
 type Config struct {
@@ -25,34 +28,21 @@ type Config struct {
 	OutputFileName    string `json:"COMPILED_FILE_NAME"`
 }
 
+// DomainMap holds the gathered domains from the log files.
+// The underlying map consists of key: domain, value: number of occurrences.
 type DomainMap struct {
 	m map[string]int
 }
 
-func (dm DomainMap) Insert(s string) {
-	lock.Lock()
-	dm.m[s]++
-	lock.Unlock()
-}
-
-func (dm DomainMap) Domains() map[string]int {
-	return dm.m
-}
-
-func NewDomainMap() *DomainMap {
-	return &DomainMap{
-		m: make(map[string]int, 0),
-	}
-}
-
 func main() {
 	ts := time.Now()
+
 	cfg, err := NewConfig()
 	if err != nil {
 		log.Fatalf("unable to start: %v", err)
 	}
 
-	// Read all files from `LogsDirectory`
+	// Read all files from the configured `LogsDirectory`
 	files, err := ioutil.ReadDir(cfg.LogsDirectory)
 	if err != nil {
 		log.Fatalf("could not read files from the configured directory (%v): %v", cfg.LogsDirectory, err)
@@ -71,19 +61,119 @@ func main() {
 
 	// Keep track of all gathered domains.
 	compiledMap := NewDomainMap()
+	var wg sync.WaitGroup
 
 	// For each file of interest, read it line-by-line.
 	for _, fileName := range filesOfInterest {
 		f := cfg.LogsDirectory + fileName
-		go processFile(f, compiledMap)
+
+		wg.Add(1)
+		go processFile(f, compiledMap, &wg)
 	}
 
-	time.Sleep(time.Second * 2)
+	fmt.Println(">>> Waiting for all jobs to finish...")
+	wg.Wait()
 
-	fmt.Printf("Unique extracted domains: %v in %v\n", len(compiledMap.Domains()), time.Since(ts))
+	// Write to file gathered domains.
+	// TODO: maybe give the option to append if file exists and not overwrite?
+	f, err := os.Create("./" + cfg.OutputFileName)
+	if err != nil {
+		log.Fatalf("could not write output to file (%v)", cfg.OutputFileName)
+	}
+	for domain, _ := range compiledMap.Domains() {
+		if _, err := f.WriteString(domain + "\n"); err != nil {
+			log.Printf("skipped: could not write domain (%v) to file (%v): %v", domain, cfg.OutputFileName, err)
+			continue
+		}
+	}
+
+	r := bufio.NewReader(os.Stdin)
+	fmt.Println("-----------")
+	fmt.Printf("Would you like to stick those (%v) collected domains into *your* pihole? (y/n)\n",
+		len(compiledMap.Domains()),
+	)
+	fmt.Println("-----------")
+
+AwaitInput:
+	for {
+		rn, _, err := r.ReadRune()
+		switch {
+		case err != nil:
+			log.Fatalf("could not read input: %v", err)
+		case rn == 'Y', rn == 'y':
+			log.Println("Yes, OK.")
+
+			cmd := exec.Command("pihole", "-b "+compiledMap.DomainsToString())
+			if _, err := cmd.CombinedOutput(); err != nil {
+				log.Fatalf("could not send command to pihole: %v", err)
+			}
+
+			break AwaitInput
+		case rn == 'N', rn == 'n':
+			log.Println("No is a no. Bye.")
+			break AwaitInput
+		default:
+			log.Printf("Your key (%v) is not supported. Use: Y, y, N, n", rn)
+		}
+	}
+
+	fmt.Printf(">>> Done: (%v) unique extracted domains written to (%v) in (%v)\n",
+		len(compiledMap.Domains()),
+		cfg.OutputFileName,
+		time.Since(ts),
+	)
 }
 
-func processFile(f string, registry *DomainMap) error {
+// Insert takes care of adding domains the the domain map.
+func (dm DomainMap) Insert(s string) {
+	lock.Lock()
+	dm.m[s]++
+	lock.Unlock()
+}
+
+// Domains returns the underlying domain map.
+func (dm DomainMap) Domains() map[string]int {
+	return dm.m
+}
+
+// DomainsToString returns the gathered domains into a single string, space separated.
+func (dm DomainMap) DomainsToString() string {
+	var d strings.Builder
+	for domain, _ := range dm.m {
+		d.WriteString(domain + " ")
+	}
+
+	return d.String()
+}
+
+// NewDomainMap returns a pointer to a `DomainMap`.
+func NewDomainMap() *DomainMap {
+	return &DomainMap{
+		m: make(map[string]int, 0),
+	}
+}
+
+// NewConfig reads the JSON config file and returns it as a struct.
+func NewConfig() (*Config, error) {
+	f, err := os.Open("./config.json")
+	if err != nil {
+		return nil, fmt.Errorf("config: could not read file: %v", err)
+	}
+	defer f.Close()
+
+	var cfg Config
+	if err := json.NewDecoder(f).Decode(&cfg); err != nil {
+		return nil, fmt.Errorf("config: could not decode file: %v", err)
+	}
+
+	return &cfg, nil
+}
+
+func processFile(f string, registry *DomainMap, wg *sync.WaitGroup) error {
+	defer func() {
+		wg.Done()
+	}()
+
 	ts := time.Now()
 	openFile, err := os.Open(f)
 	if err != nil {
@@ -141,19 +231,4 @@ ForEachLine:
 	log.Printf("Finished processing file (%v) in (%v).", f, time.Since(ts))
 
 	return nil
-}
-
-func NewConfig() (*Config, error) {
-	f, err := os.Open("./config.json")
-	if err != nil {
-		return nil, fmt.Errorf("config: could not read file: %v", err)
-	}
-	defer f.Close()
-
-	var cfg Config
-	if err := json.NewDecoder(f).Decode(&cfg); err != nil {
-		return nil, fmt.Errorf("config: could not decode file: %v", err)
-	}
-
-	return &cfg, nil
 }
