@@ -199,12 +199,12 @@ func processFile(f string, registry *DomainMap, wg *sync.WaitGroup) error {
 
 	var lineNumber int
 
-ForEachLine:
+LineLoop:
 	for {
 		line, lineTooLong, err := r.ReadLine()
 		switch {
 		case err == io.EOF:
-			break ForEachLine
+			break LineLoop
 		case err != nil:
 			log.Printf("Skipped unreadable file (%v): %v", f, err)
 			continue
