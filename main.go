@@ -110,23 +110,14 @@ func main() {
 			log.Printf("Adding (%v) domains to the blacklist...", totalCollectedDomains)
 
 			var cmd *exec.Cmd
-			cmd = exec.Command("pihole", "-b "+compiledMap.DomainsToString())
+			cmd = exec.Command("pihole", "-b", compiledMap.DomainsToString())
 			out, err := cmd.CombinedOutput()
 			if err != nil {
 				log.Fatalf("could not send `blacklist domains` command to pihole: %v", err)
 			}
 
-			log.Printf("Blacklist domains at pihole command output: %s", out)
-			log.Println("Restarting pihole...")
-
-			cmd = exec.Command("pihole", "restartdns")
-			out, err = cmd.CombinedOutput()
-			if err != nil {
-				log.Fatalf("could not send `restartdns` command to pihole: %v", err)
-			}
-
-			log.Printf("Restart pihole command output: %s", out)
-			log.Println("Job finished.")
+			log.Printf("Output from pihole: %s", out)
+			log.Println("Finished.")
 
 			return
 		case rn == 'N', rn == 'n':
