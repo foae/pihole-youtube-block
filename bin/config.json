@@ -1,5 +1,0 @@
-{
-    "PIHOLE_LOGS_DIR": "/var/log/",
-    "COMPILED_FILE_NAME": "./compiled_domains.txt",
-    "LOG_FILE_NAME_PREFIX": "pihole.log"
-}
